@@ -458,19 +458,20 @@ class SkyCover(gl.Contract):
         net_pool_value = self._available_capacity()
         payout = (requested * net_pool_value) // total_shares
         if payout <= 0:
-            if net_pool_value > 0:
-                # The pool as a whole still has net value -- this caller's
-                # own slice of it just rounds down to 0 (dust). That's a
-                # real "nothing to claim" case, not the wipeout below.
+            if int(self.total_pool_balance) > 0:
+                # The pool still holds capital (possibly all of it reserved for
+                # active policies, which are NOT lost until they pay out) --
+                # this caller's slice just rounds to 0 right now. Never burn
+                # shares for nothing in that case: revert and let them retry.
                 raise gl.vm.UserError(
                     f"{ERR_EXPECTED} nothing to withdraw: shares are worth 0 net of reserved capital"
                 )
-            # net_pool_value == 0: the whole pool was wiped out by paid
-            # claims, so every remaining share is legitimately worthless
-            # (not dust -- there's nothing left for ANY holder to claim).
-            # Let LPs formally burn them for 0 GEN rather than being stuck
-            # forever, so total_shares can reach 0 and deposit_liquidity's
-            # 1:1 bootstrap path becomes available again.
+            # total_pool_balance == 0: paid claims wiped the pool out entirely,
+            # so every remaining share is legitimately worthless. Let LPs
+            # formally burn them for 0 GEN so total_shares can reach 0 and the
+            # 1:1 bootstrap path in deposit_liquidity becomes available again.
+            # (Deliberately keyed on the GROSS balance, not net-of-reserved:
+            # "balance == reserved" is a normal, non-wiped-out state.)
 
         self.pool_shares[sender] = u256(owned - requested)
         self.total_shares = u256(int(self.total_shares) - requested)

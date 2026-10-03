@@ -905,3 +905,81 @@ def test_informed_lp_cannot_exit_ahead_of_a_known_payout(isolated):
 
     # Alice ends up exactly where she would have if Bob had stayed in.
     assert contract.get_lp_position(alice.as_hex)["value"] == str(fair_value_each)
+
+
+# ---------------------------------------------------------------------------
+# tests for the patched behaviours (zero-balance guards, source deactivation,
+# zero-address guards)
+# ---------------------------------------------------------------------------
+
+ZERO_ADDR_HEX = "0x" + "0" * 40
+
+
+def test_fully_reserved_pool_never_burns_shares_for_zero(isolated):
+    """balance == reserved is a normal state, NOT a wipe-out: a withdrawal
+    that rounds to 0 must revert instead of destroying the LP's shares."""
+    contract, vm, alice = isolated["contract"], isolated["vm"], isolated["alice"]
+    _deposit(isolated, 1_000, lp=alice)
+    _deposit(isolated, 1_000, lp=isolated["bob"])
+    # Force "all capital reserved" directly in storage (the policy purchase
+    # path can't reach it exactly, but the guard must hold regardless).
+    contract.total_reserved_exposure = int(contract.total_pool_balance)
+
+    vm.sender = alice
+    shares_before = contract.get_lp_position(alice.as_hex)["shares"]
+    with pytest.raises(Exception, match="nothing to withdraw"):
+        contract.withdraw_liquidity(500)
+    assert contract.get_lp_position(alice.as_hex)["shares"] == shares_before
+
+
+def test_wiped_out_pool_blocks_deposits_but_lets_lps_burn_dead_shares(isolated):
+    contract, vm = isolated["contract"], isolated["vm"]
+    alice, bob = isolated["alice"], isolated["bob"]
+    _deposit(isolated, 1_000, lp=alice)
+    # Simulate claims having drained the whole pool while shares remain.
+    contract.total_pool_balance = 0
+    contract.total_reserved_exposure = 0
+
+    # New money must not be minted against dead shares (or divide by zero).
+    with pytest.raises(Exception, match="fully drained"):
+        _deposit(isolated, 500, lp=bob)
+
+    # The old LP can formally burn the worthless shares for 0 GEN...
+    vm.sender = alice
+    assert int(contract.withdraw_liquidity(1_000)) == 0
+    assert contract.get_stats()["total_shares"] == "0"
+
+    # ...after which the pool bootstraps 1:1 again.
+    assert int(_deposit(isolated, 500, lp=bob)) == 500
+
+
+def test_resolve_is_blocked_while_the_source_is_deactivated_and_resumes_after(isolated):
+    contract, vm = isolated["contract"], isolated["vm"]
+    _deposit(isolated, 100_000)
+    policy_id = _buy_policy(isolated, premium=1_000, payout=5_000, delay_threshold=120)
+    policy = contract.get_policy(policy_id)
+    _mock_flight(isolated, status="cancelled")
+    _warp_to(isolated, policy.resolvable_at, offset_seconds=1)
+
+    vm.sender = isolated["admin"]
+    contract.set_data_source_active(isolated["source_id"], False)
+    vm.sender = isolated["dave"]
+    with pytest.raises(Exception, match="has been deactivated"):
+        contract.resolve_policy(policy_id)
+    assert contract.get_policy(policy_id).status == "ACTIVE"
+
+    vm.sender = isolated["admin"]
+    contract.set_data_source_active(isolated["source_id"], True)
+    vm.sender = isolated["dave"]
+    assert contract.resolve_policy(policy_id) == "pay"
+
+
+def test_treasury_and_admin_cannot_be_set_to_the_zero_address(isolated):
+    contract, vm = isolated["contract"], isolated["vm"]
+    vm.sender = isolated["admin"]
+    with pytest.raises(Exception, match="treasury cannot be the zero address"):
+        contract.set_treasury(ZERO_ADDR_HEX)
+    with pytest.raises(Exception, match="admin cannot be the zero address"):
+        contract.transfer_admin(ZERO_ADDR_HEX)
+    stats = contract.get_stats()
+    assert stats["admin"] == isolated["admin"].as_hex
