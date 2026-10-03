@@ -292,6 +292,14 @@ eliminated).
   enough to matter, the same counter-plus-indexed-map approach used for
   `get_wallet_policies` would apply directly.
 
+  ## Deployed Contract (Studionet)
+
+The SkyCover contract has been successfully manually deployed to the GenLayer Studionet for testing and evaluation.
+
+- **Network:** Studionet (Chain ID: `61999`)
+- **Contract Address:** `0xC668eF5d7e61414100E4631819d5aDf81C0c8b83`
+- **Constructor Arguments Used:** `500` `500` `10` `2000` `100`
+
 ## License
 
 MIT
