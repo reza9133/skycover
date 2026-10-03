@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+artifacts/
+
+# genlayer-test direct mode cache (downloaded once, machine-local)
+.cache/
+
+# editor
+.vscode/
+.idea/
+*.swp
