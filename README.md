@@ -2,10 +2,9 @@
 
 **Parametric flight-delay insurance, underwritten by a GenLayer-judged liquidity pool.**
 
-> Status: the contract and its test suite are complete and verified.
-> Frontend and deployment scripts are not built yet — this repo currently
-> holds `contracts/` and `tests/` only, by design, while the contract
-> itself gets nailed down first.
+> Status: The contract and its test suite are complete and verified. 
+> The contract has been successfully deployed to GenLayer Studionet for evaluation.
+> (Frontend and automated deployment scripts are planned for a future phase).
 
 Liquidity providers deposit GEN into a shared pool and receive shares.
 Travelers buy a policy against a specific flight — airline/flight code
